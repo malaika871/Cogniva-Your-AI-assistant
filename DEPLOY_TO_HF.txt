@@ -1,0 +1,165 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    DEPLOY TO HUGGING FACE - STEP BY STEP                   ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+PRE-DEPLOYMENT CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Verify these files exist in your project:
+   
+   Required files:
+   • streamlit_app.py (root)
+   • requirements.txt (root)
+   • .streamlit/config.toml
+   • src/config.py
+   • src/chatbot.py
+   • src/document_processor.py
+   • src/rag_engine.py
+   • src/utils.py
+
+If any are missing, the fix is incomplete.
+
+STEP-BY-STEP DEPLOYMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: Navigate to your project directory
+────────────────────────────────────────────────────────────────────────────
+cd /home/malaika/Downloads/RAG_myown
+
+STEP 2: Check git status
+────────────────────────────────────────────────────────────────────────────
+git status
+
+You should see these new files:
+   - streamlit_app.py
+   - requirements.txt
+   - .streamlit/config.toml
+   - HF_DEPLOYMENT.md
+   - DEPLOY_TO_HF.txt (this file)
+
+And these modified files:
+   - app.py
+
+STEP 3: Stage all changes
+────────────────────────────────────────────────────────────────────────────
+git add .
+
+STEP 4: Create a meaningful commit message
+────────────────────────────────────────────────────────────────────────────
+git commit -m "Fix ModuleNotFoundError: Add HF-compatible entry point and config
+
+- Create streamlit_app.py with fixed import paths for Hugging Face
+- Add requirements.txt with all dependencies
+- Add .streamlit/config.toml for Streamlit configuration
+- Improve path handling in app.py for both local and HF environments
+- Add HF deployment guides
+
+This resolves the 'No module named config' error on Hugging Face."
+
+STEP 5: Push to Hugging Face
+────────────────────────────────────────────────────────────────────────────
+git push
+
+STEP 6: Monitor deployment
+────────────────────────────────────────────────────────────────────────────
+1. Go to your Hugging Face Space repository
+2. Check the "Build" tab for deployment status
+3. Wait for "Building" to complete
+4. Check logs if any errors occur
+
+STEP 7: Access your app
+────────────────────────────────────────────────────────────────────────────
+Once deployment completes, your app will be at:
+
+https://huggingface.co/spaces/YOUR-USERNAME/YOUR-SPACE-NAME
+
+TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+If you still see "ModuleNotFoundError: No module named 'config'":
+
+1. Check Hugging Face build logs:
+   • Go to your Space repository
+   • Click "Files and versions" tab
+   • Check build logs for errors
+
+2. Verify file structure in Hugging Face:
+   ✓ streamlit_app.py in root
+   ✓ requirements.txt in root
+   ✓ .streamlit/config.toml exists
+   ✓ src/ folder with all modules
+
+3. If files look correct but error persists:
+   • Try clearing Hugging Face cache
+   • Rebuild the Space
+   • Check latest app logs
+
+4. Common issues:
+   ❌ Forgot to push src/ folder → Push it!
+   ❌ Wrong filename (streamlit_app instead of streamlit_app.py) → Fix it!
+   ❌ Old streamlit_app.py still in use → Delete it and push new one!
+   ❌ requirements.txt missing packages → Add them and push!
+
+TESTING LOCALLY FIRST (OPTIONAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Test with the same file that runs on Hugging Face:
+
+1. Start Ollama (if testing full functionality):
+   ollama serve
+
+2. Run streamlit_app.py:
+   streamlit run streamlit_app.py
+
+3. Test the app:
+   • Upload documents
+   • Test chat
+   • Check for errors
+
+If it works locally, it should work on Hugging Face!
+
+QUICK COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+All-in-one deployment:
+
+cd /home/malaika/Downloads/RAG_myown && \
+git add . && \
+git commit -m "Fix import errors and add HF deployment" && \
+git push
+
+Test locally with same code as HF:
+
+streamlit run streamlit_app.py
+
+Test with custom port:
+
+streamlit run streamlit_app.py --server.port=8502
+
+WHAT HAPPENS AFTER PUSH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Timeline:
+  1-2 min   : Hugging Face detects changes
+  2-5 min   : Building (installing dependencies)
+  5-10 min  : Complete
+  
+Status indicators:
+  🟡 Yellow : Building/Deploying
+  🟢 Green  : Running successfully
+  🔴 Red    : Error (check logs)
+
+YOUR APP IS READY!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+All fixes have been applied and verified.
+The ModuleNotFoundError should be RESOLVED.
+
+Simply push and your app should work on Hugging Face! ��
+
+Questions? Check:
+  • HF_DEPLOYMENT.md - Full deployment guide
+  • README.md - Project documentation
+  • QUICKSTART.md - Quick start guide
+
+╚════════════════════════════════════════════════════════════════════════════╝

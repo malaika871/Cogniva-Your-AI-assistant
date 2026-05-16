@@ -1,131 +1,423 @@
-import gradio as gr
-import ollama
-import tempfile
+import sys
 import os
-import requests
-from dotenv import load_dotenv
 
-load_dotenv()
+# Handle both local and Hugging Face deployments
+try:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+except:
+    current_dir = os.getcwd()
 
-OLLAMA_MODEL = "mistral"
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
-WEB_KEYWORDS = ["current", "latest", "today", "now", "recent", "breaking", "updates", "news", "war"]
+src_dir = os.path.join(current_dir, 'src')
 
-def search_web(query):
-    if not TAVILY_API_KEY:
-        return None
-    try:
-        url = "https://api.tavily.com/search"
-        payload = {"api_key": TAVILY_API_KEY, "query": query, "max_results": 3, "include_answer": True}
-        r = requests.post(url, json=payload, timeout=15)
-        if r.status_code == 200:
-            data = r.json()
-            results = []
-            if data.get("answer"):
-                results.append({"content": data["answer"], "url": "Summary"})
-            for res in data.get("results", [])[:2]:
-                results.append({"content": res.get("content", "")[:500], "url": res.get("url", "")})
-            return results
-    except:
-        pass
-    return None
+# Add src to path if it exists
+if os.path.exists(src_dir):
+    sys.path.insert(0, src_dir)
+else:
+    # For Hugging Face: src might be in same directory
+    sys.path.insert(0, current_dir)
 
-def process_file(file):
-    if file is None:
-        return None
-    try:
-        text = ""
-        if file.name.endswith(".txt"):
-            with open(file.name, "r", encoding="utf-8") as f:
-                text = f.read()
-        elif file.name.endswith(".pdf"):
-            import PyPDF2
-            with open(file.name, "rb") as f:
-                reader = PyPDF2.PdfReader(f)
-                for page in reader.pages:
-                    text += page.extract_text() + "\n"
-        return text
-    except:
-        return None
+import streamlit as st
+from config import Config
+from document_processor import DocumentProcessor
+from chatbot import Chatbot
+from utils import check_ollama, ensure_model_available
 
-document_text = ""
-document_name = ""
+# Modern UI Styling
+st.set_page_config(
+    page_title="Cogniva - Document Assistant",
+    page_icon="✨",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-def chat(message, history):
-    global document_text, document_name
-    use_web = any(k in message.lower() for k in WEB_KEYWORDS) and TAVILY_API_KEY
-    web_results = search_web(message) if use_web else None
-    if document_text and web_results:
-        prompt = f"Document:\n{document_text[:3000]}\n\nWeb Results:\n{web_results[0]["content"]}\n\nQuestion: {message}\nAnswer using BOTH sources. Cite sources."
-    elif document_text:
-        prompt = f"Document:\n{document_text[:4000]}\n\nQuestion: {message}\nAnswer based ONLY on the document. If not found, say so."
-    elif web_results:
-        prompt = f"Web Results:\n{web_results[0]["content"]}\n\nQuestion: {message}\nAnswer based on web results. Cite sources."
-    else:
-        prompt = f"Question: {message}\nAnswer concisely."
-    try:
-        response = ollama.chat(model=OLLAMA_MODEL, messages=[{"role": "user", "content": prompt}], options={"temperature": 0.7, "num_predict": 500})
-        answer = response["message"]["content"]
-        if document_text and web_results:
-            answer += "\n\n---\n📄 From document + 🌐 Web search"
-        elif document_text:
-            answer += "\n\n---\n📄 From your document"
-        elif web_results:
-            answer += "\n\n---\n🌐 From web search"
-        return answer
-    except Exception as e:
-        return f"Error: {str(e)}"
+# Apply Modern CSS Styling
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    
+    * {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Animated Gradient Background */
+    .stApp {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 25%, #334155 50%, #1e293b 75%, #0f172a 100%);
+        background-size: 400% 400%;
+        animation: gradientShift 15s ease infinite;
+    }
+    
+    @keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    
+    /* Hide default Streamlit UI elements */
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
+    header { visibility: hidden; }
+    
+    /* Main container */
+    .main {
+        padding: 2rem;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background: rgba(15, 23, 42, 0.7);
+        backdrop-filter: blur(10px);
+        border-right: 1px solid rgba(148, 163, 184, 0.1);
+    }
+    
+    /* Title styling */
+    h1 {
+        font-size: 3rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 0.5rem;
+        letter-spacing: -1px;
+    }
+    
+    /* Subtitle */
+    .subtitle {
+        font-size: 0.95rem;
+        color: #94a3b8;
+        margin-bottom: 2rem;
+        font-weight: 400;
+        letter-spacing: 0.3px;
+    }
+    
+    /* Card styling */
+    .modern-card {
+        background: rgba(15, 23, 42, 0.5);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(148, 163, 184, 0.1);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        transition: all 0.3s ease;
+    }
+    
+    .modern-card:hover {
+        background: rgba(15, 23, 42, 0.7);
+        border-color: rgba(59, 130, 246, 0.3);
+        box-shadow: 0 8px 32px rgba(59, 130, 246, 0.1);
+    }
+    
+    /* Chat message styling */
+    .user-message {
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+        border-left: 3px solid #3b82f6;
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        margin: 0.75rem 0;
+        border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+    
+    .assistant-message {
+        background: rgba(30, 41, 59, 0.6);
+        border-left: 3px solid #8b5cf6;
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        margin: 0.75rem 0;
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        color: #e2e8f0;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        letter-spacing: 0.3px;
+        width: 100%;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(59, 130, 246, 0.5);
+    }
+    
+    /* Input field styling */
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea {
+        background: rgba(30, 41, 59, 0.6) !important;
+        border: 1px solid rgba(148, 163, 184, 0.2) !important;
+        border-radius: 10px !important;
+        color: white !important;
+        padding: 0.75rem 1rem !important;
+        transition: all 0.3s ease;
+        font-size: 0.95rem;
+    }
+    
+    .stTextInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: rgba(59, 130, 246, 0.5) !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+    }
+    
+    /* File uploader styling */
+    .stFileUploader {
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    
+    .stFileUploader > div > div {
+        background: rgba(30, 41, 59, 0.6) !important;
+        border: 1px dashed rgba(59, 130, 246, 0.3) !important;
+        border-radius: 10px !important;
+    }
+    
+    /* Spinner styling */
+    .stSpinner {
+        color: #3b82f6;
+    }
+    
+    /* Success/Error messages */
+    .stSuccess {
+        background: rgba(34, 197, 94, 0.1) !important;
+        border-radius: 10px !important;
+        border-left: 3px solid #22c55e !important;
+    }
+    
+    .stError {
+        background: rgba(239, 68, 68, 0.1) !important;
+        border-radius: 10px !important;
+        border-left: 3px solid #ef4444 !important;
+    }
+    
+    .stWarning {
+        background: rgba(245, 158, 11, 0.1) !important;
+        border-radius: 10px !important;
+        border-left: 3px solid #f59e0b !important;
+    }
+    
+    .stInfo {
+        background: rgba(59, 130, 246, 0.1) !important;
+        border-radius: 10px !important;
+        border-left: 3px solid #3b82f6 !important;
+    }
+    
+    /* Chat message containers */
+    .stChatMessage {
+        background: transparent !important;
+        border-radius: 12px;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background: rgba(30, 41, 59, 0.6) !important;
+        border-radius: 10px !important;
+        border: 1px solid rgba(148, 163, 184, 0.1) !important;
+    }
+    
+    .streamlit-expanderContent {
+        background: rgba(15, 23, 42, 0.5) !important;
+        border: 1px solid rgba(148, 163, 184, 0.1) !important;
+        border-top: none;
+        border-radius: 0 0 10px 10px;
+    }
+    
+    /* Divider styling */
+    hr {
+        border: none;
+        border-top: 1px solid rgba(148, 163, 184, 0.1);
+        margin: 1.5rem 0;
+    }
+    
+    /* Text styling */
+    p, span, label, div {
+        color: #e2e8f0;
+    }
+    
+    h2, h3, h4, h5, h6 {
+        color: #f1f5f9;
+        font-weight: 600;
+    }
+    
+    /* Badge styling */
+    .badge {
+        display: inline-block;
+        background: rgba(59, 130, 246, 0.15);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        color: #60a5fa;
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        margin: 0.25rem;
+        letter-spacing: 0.3px;
+    }
+    
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.5);
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        border-radius: 10px;
+    }
+    
+    /* Metrics styling */
+    .stMetric {
+        background: rgba(30, 41, 59, 0.6) !important;
+        border: 1px solid rgba(148, 163, 184, 0.1) !important;
+        border-radius: 12px !important;
+        padding: 1.5rem !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-def upload_file(file):
-    global document_text, document_name
-    if file:
-        text = process_file(file)
-        if text:
-            document_text = text
-            document_name = file.name
-            return f"✅ Loaded: {file.name}"
-    return "❌ Failed to load file"
-
-def clear_document():
-    global document_text, document_name
-    document_text = ""
-    document_name = ""
-    return "📄 Document cleared"
-
-with gr.Blocks(theme=gr.themes.Soft(), title="Cogniva") as demo:
-    gr.Markdown("# ✨ Cogniva\n### Intelligent Assistant | Document Q&A | Web Search")
-    with gr.Row():
-        with gr.Column(scale=4):
-            chatbot = gr.Chatbot(label="Cogniva", height=500, bubble_full_width=False, avatar_images=(None, "🤖"))
-            msg = gr.Textbox(label="Ask anything...", placeholder="Type your message here...", lines=1, scale=4)
-            with gr.Row():
-                send_btn = gr.Button("➤ Send", variant="primary", scale=1)
-                clear_chat_btn = gr.Button("🗑️ Clear Chat", scale=1)
-        with gr.Column(scale=1):
-            gr.Markdown("### 📁 Documents")
-            file_upload = gr.File(label="Upload PDF or TXT", file_types=[".pdf", ".txt"])
-            upload_status = gr.Textbox(label="Status", interactive=False)
-            clear_doc_btn = gr.Button("🗑️ Clear Document")
-            gr.Markdown("---\n### 🌐 Web Search")
-            if TAVILY_API_KEY:
-                gr.Markdown("✅ Web search enabled")
-            else:
-                gr.Markdown("⚠️ Add TAVILY_API_KEY to .env")
-            gr.Markdown("---\n### 💡 Examples\n- What's in my document?\n- Latest news on AI\n- Summarize this for me")
-    chat_history = gr.State([])
-    def respond(message, history):
-        history = history or []
-        history.append([message, None])
-        response = chat(message, history)
-        history[-1][1] = response
-        return history, ""
-    send_btn.click(respond, [msg, chat_history], [chatbot, msg])
-    msg.submit(respond, [msg, chat_history], [chatbot, msg])
-    def clear_chat():
-        return [], []
-    clear_chat_btn.click(clear_chat, None, [chatbot, chat_history])
-    file_upload.upload(upload_file, [file_upload], [upload_status])
-    clear_doc_btn.click(clear_document, None, [upload_status])
+def main():
+    # Display header
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        st.markdown("### ✨ Cogniva")
+    with col2:
+        st.markdown('<div class="subtitle">Your Intelligent Document Assistant</div>', unsafe_allow_html=True)
+    
+    # Check Ollama and model
+    if not check_ollama():
+        st.error("❌ Ollama is not running. Please start it with: `ollama serve`")
+        st.stop()
+    
+    if not ensure_model_available(Config.OLLAMA_MODEL):
+        st.stop()
+    
+    # Initialize session state
+    if "chatbot" not in st.session_state:
+        st.session_state.chatbot = Chatbot()
+        st.session_state.doc_processor = DocumentProcessor()
+        st.session_state.messages = []
+        st.session_state.document_loaded = False
+    
+    # Modern Sidebar
+    with st.sidebar:
+        st.markdown("### 📁 Document Management")
+        st.markdown("---")
+        
+        # Upload section
+        st.markdown("**Upload & Process**")
+        uploaded_file = st.file_uploader(
+            "Choose PDF or TXT file",
+            type=['pdf', 'txt'],
+            label_visibility="collapsed"
+        )
+        
+        if uploaded_file:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.caption(f"📄 {uploaded_file.name}")
+            with col2:
+                if st.button("✓", help="Load Document", key="load_doc_btn"):
+                    with st.spinner("📖 Processing document..."):
+                        text, pages = st.session_state.doc_processor.load_document(uploaded_file)
+                        if text and "Error" not in text:
+                            st.session_state.chatbot.load_document(
+                                st.session_state.doc_processor.document_text,
+                                uploaded_file.name
+                            )
+                            st.session_state.document_loaded = True
+                            st.success(f"✅ Successfully loaded: {uploaded_file.name}")
+                            st.info(f"📊 **Stats**: {len(text):,} chars • {pages} pages")
+                            
+                            with st.expander("Preview"):
+                                st.text(text[:500])
+                        else:
+                            st.error("Failed to process document")
+        
+        st.markdown("---")
+        
+        # Document info section
+        if st.session_state.document_loaded:
+            st.markdown("### 📄 Active Document")
+            st.markdown(f'<div class="badge">✓ {st.session_state.chatbot.get_document_name()}</div>', unsafe_allow_html=True)
+            
+            if st.button("🗑️ Clear Document", use_container_width=True):
+                st.session_state.chatbot.clear_document()
+                st.session_state.doc_processor.clear_document()
+                st.session_state.document_loaded = False
+                st.session_state.messages = []
+                st.rerun()
+        else:
+            st.markdown("### 📄 Document Status")
+            st.info("No document loaded. Upload a file to get started!")
+        
+        st.markdown("---")
+        
+        # Model info
+        st.markdown("### ⚙️ Configuration")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f'<div class="badge">Model: {Config.OLLAMA_MODEL}</div>', unsafe_allow_html=True)
+        
+        # Clear chat button
+        st.markdown("---")
+        if st.button("🔄 Clear Chat History", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
+    
+    # Main chat area
+    st.markdown("---")
+    
+    # Chat container
+    st.markdown("### 💬 Chat")
+    
+    for msg in st.session_state.messages:
+        if msg["role"] == "user":
+            st.markdown(f'<div class="user-message"><strong>You:</strong> {msg["content"]}</div>', unsafe_allow_html=True)
+        else:
+            source_text = ""
+            if "source" in msg:
+                source = msg["source"]
+                if "Document" in source:
+                    source_text = ' <span class="badge">📄 Document</span>'
+                else:
+                    source_text = ' <span class="badge">🧠 AI</span>'
+            st.markdown(f'<div class="assistant-message"><strong>Cogniva:</strong> {msg["content"]}{source_text}</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Chat input
+    prompt = st.chat_input(
+        "Ask about your document..." if st.session_state.document_loaded else "Ask anything...",
+        key="user_input"
+    )
+    
+    if prompt:
+        # Add user message
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.rerun()
+    
+    # Generate response if needed
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+        with st.spinner("✨ Thinking..."):
+            last_user_msg = [m["content"] for m in st.session_state.messages if m["role"] == "user"][-1]
+            use_document = st.session_state.document_loaded
+            response, source, elapsed = st.session_state.chatbot.chat(last_user_msg, use_document)
+            
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response,
+                "source": f"From: {'Document' if source == 'document' else 'AI'}"
+            })
+        
+        st.rerun()
 
 if __name__ == "__main__":
-    demo.launch(share=False, server_name="0.0.0.0", server_port=7860)
+    main()

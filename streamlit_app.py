@@ -1,6 +1,16 @@
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Hugging Face deployment - set up paths correctly
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.join(current_dir, 'src')
+
+# Add src to Python path
+if os.path.exists(src_dir):
+    sys.path.insert(0, src_dir)
+else:
+    # Fallback
+    sys.path.insert(0, current_dir)
 
 import streamlit as st
 from config import Config
@@ -10,7 +20,7 @@ from utils import check_ollama, ensure_model_available
 
 # Modern UI Styling
 st.set_page_config(
-    page_title="Document Assistant",
+    page_title="Cogniva - Document Assistant",
     page_icon="✨",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -279,7 +289,8 @@ def main():
     
     # Check Ollama and model
     if not check_ollama():
-        st.error("❌ Ollama is not running. Please start it with: `ollama serve`")
+        st.error("❌ Ollama is not running. Please ensure Ollama service is available.")
+        st.info("For local setup: Run `ollama serve` in another terminal")
         st.stop()
     
     if not ensure_model_available(Config.OLLAMA_MODEL):
