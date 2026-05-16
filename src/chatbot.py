@@ -1,7 +1,7 @@
 import ollama
 import time
-from config import Config
-from rag_engine import RAGEngine
+from .config import Config
+from .rag_engine import RAGEngine
 
 class Chatbot:
     def __init__(self):

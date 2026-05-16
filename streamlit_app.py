@@ -1,22 +1,8 @@
-import sys
-import os
-
-# Hugging Face deployment - set up paths correctly
-current_dir = os.path.dirname(os.path.abspath(__file__))
-src_dir = os.path.join(current_dir, 'src')
-
-# Add src to Python path
-if os.path.exists(src_dir):
-    sys.path.insert(0, src_dir)
-else:
-    # Fallback
-    sys.path.insert(0, current_dir)
-
 import streamlit as st
-from config import Config
-from document_processor import DocumentProcessor
-from chatbot import Chatbot
-from utils import check_ollama, ensure_model_available
+from src.config import Config
+from src.document_processor import DocumentProcessor
+from src.chatbot import Chatbot
+from src.utils import check_ollama, ensure_model_available
 
 # Modern UI Styling
 st.set_page_config(

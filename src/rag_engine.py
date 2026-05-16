@@ -1,6 +1,6 @@
 import ollama
 import time
-from config import Config
+from .config import Config
 
 class RAGEngine:
     def __init__(self):
